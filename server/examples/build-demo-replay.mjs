@@ -1,0 +1,4 @@
+import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';import {packFrame} from '../server/liveview.js';
+const jpeg=readFileSync(new URL('../tests/fixtures/simulated-camera.jpg',import.meta.url));const frames=[];
+for(let i=0;i<5;i++)frames.push(packFrame({type:'frame',epoch:'11111111-1111-4111-8111-111111111111',seq:i,ts:Date.now(),w:640,h:480,intrinsics:{fx:500,fy:500,cx:320,cy:240},pose:{p:[0,0,0],q:[0,0,0,1]},calibration:'estimated',source:'simulation',overlays:[],hands:[{u:.25+i*.1,v:.75}]},jpeg).toString('base64'));
+const dir=new URL('../demo/',import.meta.url);mkdirSync(dir,{recursive:true});writeFileSync(new URL('SIMULATED-replay.json',dir),JSON.stringify({format:'alongside-liveview-replay',version:1,frames}));console.log('Created explicitly simulated replay fixture. It is not a recorded Quest stream.');

@@ -1,0 +1,56 @@
+# ---------- Unity (unity/) ----------
+/unity/[Ll]ibrary/
+/unity/[Tt]emp/
+/unity/[Oo]bj/
+/unity/[Bb]uild/
+/unity/[Bb]uilds/
+/unity/[Ll]ogs/
+/unity/[Uu]ser[Ss]ettings/
+/unity/MemoryCaptures/
+/unity/Recordings/
+/unity/Assets/_Recovery/
+/unity/Assets/_Recovery.meta
+/unity/.utmp/
+/unity/.vs/
+/unity/.vscode/
+/unity/*.csproj
+/unity/*.sln
+/unity/*.slnx
+/unity/*.unityproj
+/unity/*.user
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+crashlytics-buildsettings.exe
+
+# Android signing: never commit keystores or their passwords
+*.keystore
+*.jks
+*.apk
+*.aab
+/unity/Keystore/
+KEYSTORE-PASSWORD*
+
+# Local editor automation (not part of the app)
+/unity/ClaudeBridge/
+/unity/Assets/Editor/ClaudeBridge*
+/unity/Assets/Editor/ClaudeSnippets*
+
+# ---------- Server (server/) ----------
+/server/node_modules/
+/server/data/
+/server/artifacts/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.bak*
+*.log
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini

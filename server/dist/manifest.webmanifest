@@ -1,0 +1,21 @@
+{
+  "name": "Alongside",
+  "short_name": "Alongside",
+  "description": "See what your Quest teammate sees and draw into their space.",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f1eee6",
+  "theme_color": "#f1eee6",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

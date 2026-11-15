@@ -1,0 +1,19 @@
+{
+    "name": "Alongside.Editor",
+    "rootNamespace": "Alongside.EditorTools",
+    "references": [
+        "Alongside.Runtime",
+        "Unity.XR.OpenXR"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

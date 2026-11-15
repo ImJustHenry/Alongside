@@ -1,0 +1,5 @@
+<linker>
+  <assembly fullname="Meta.XR.MRUtilityKit" ignoreIfMissing="1">
+    <type fullname="Meta.XR.PassthroughCameraAccess" preserve="all" />
+  </assembly>
+</linker>

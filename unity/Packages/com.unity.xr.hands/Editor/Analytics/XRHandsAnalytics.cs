@@ -1,0 +1,31 @@
+#if UNITY_6000_5_OR_NEWER
+using Unity.Scripting.LifecycleManagement;
+#endif
+#if ENABLE_CLOUD_SERVICES_ANALYTICS || UNITY_2023_2_OR_NEWER
+#if !UNITY_2023_2_OR_NEWER
+using System.Reflection;
+#endif // !UNITY_2023_2_OR_NEWER
+
+namespace UnityEditor.XR.Hands.Analytics
+{
+    /// <summary>
+    /// The entry point class to send XR Hands analytics data.
+    /// </summary>
+#if UNITY_6000_5_OR_NEWER
+    [NoAutoStaticsCleanup]
+#endif
+    static class XRHandsAnalytics
+    {
+        internal const string k_VendorKey = "unity.xr.hands";
+        internal const string k_PackageName = "com.unity.xr.hands";
+#if UNITY_2023_2_OR_NEWER
+        internal static readonly string k_PackageVersion = PackageManager.PackageInfo.FindForPackageName(k_PackageName).version;
+#else
+        internal static readonly string k_PackageVersion = PackageManager.PackageInfo.FindForAssembly(Assembly.GetExecutingAssembly()).version;
+#endif
+
+        internal static XRHandsPlaymodeUsageEvent playmodeUsageEvent { get; } = new();
+        internal static XRHandsEditmodeUsageEvent editmodeUsageEvent { get; } = new();
+    }
+}
+#endif //ENABLE_CLOUD_SERVICES_ANALYTICS || UNITY_2023_2_OR_NEWER

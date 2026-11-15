@@ -1,0 +1,20 @@
+// Guest-side check for the collaborative-writing lock. Usage: node unity-guest-check.mjs "<invite link>" <out.json>
+import { writeFileSync } from "node:fs";
+const [link, out] = process.argv.slice(2);
+const u = new URL(link); const base = u.origin; const p = new URLSearchParams(u.hash.slice(1));
+const room = p.get("room"), invite = p.get("invite");
+const call = async (m, path, body, t) => { const r = await fetch(base + path, { method: m, headers: { "content-type": "application/json", ...(t ? { authorization: "Bearer " + t } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) }; };
+const log = [];
+const j = await call("POST", `/api/rooms/${room}/join`, { name: "Guest (browser)", invite });
+const t = j.body.token; log.push(["join", j.status]);
+const mark = (x) => ({ type: "add", annotation: { type: "pen", points: [{ x, y: 0.6 }, { x: x + 0.1, y: 0.62 }], color: "#da6b45", width: 4, text: "" } });
+log.push(["add while ON", (await call("POST", `/api/rooms/${room}/actions`, mark(0.1), t)).status]);
+const waitFor = async (want) => { for (let i = 0; i < 60; i++) { const s = await call("GET", `/api/rooms/${room}`, null, t); if (s.body.collaborativeWriting === want) return true; await new Promise(r => setTimeout(r, 1000)); } return false; };
+log.push(["saw OFF", await waitFor(false)]);
+const off = await call("POST", `/api/rooms/${room}/actions`, mark(0.3), t); log.push(["add while OFF", off.status, off.body?.error]);
+log.push(["move while OFF", (await call("POST", `/api/rooms/${room}/actions`, { type: "move", id: "cap", position: { x: 0.76, y: 0.39 } }, t)).status]);
+const ask = await call("POST", `/api/rooms/${room}/ai/ask`, { prompt: "What next?" }, t); log.push(["ask while OFF", ask.status]);
+const s1 = await call("GET", `/api/rooms/${room}`, null, t); log.push(["last message", s1.body.messages.at(-1)?.text]);
+log.push(["saw ON", await waitFor(true)]);
+log.push(["add while ON again", (await call("POST", `/api/rooms/${room}/actions`, mark(0.5), t)).status]);
+writeFileSync(out, JSON.stringify(log, null, 1));
