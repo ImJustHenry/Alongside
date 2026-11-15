@@ -42,8 +42,7 @@ final class ServerFinder: ObservableObject {
         set { defaults.set(newValue?.absoluteString, forKey: "publicServer") }
     }
 
-    /// The 6-digit pairing code, kept natively because each server address is a separate
-    /// web origin with its own storage. Appended to the page URL as `?pair=`.
+    /// The 6-digit pairing code (works on every address of the same server).
     var pairCode: String? {
         get { defaults.string(forKey: "pairCode") }
         set {
@@ -70,36 +69,49 @@ final class ServerFinder: ObservableObject {
     }
 
     private func runSearch() async {
+        if let url = await findServer() { return use(url) }
+        if Task.isCancelled { return }
+        log.notice("No server found")
+        state = .notFound
+        // Keep looking quietly (e.g. the server starts later, or networking was still
+        // waking up). The manual-entry screen stays put; we switch only on success.
+        while !Task.isCancelled, state == .notFound {
+            try? await Task.sleep(for: .seconds(6))
+            if Task.isCancelled || state != .notFound { return }
+            if let url = await findServer() { return use(url) }
+        }
+    }
+
+    /// One pass over every way of reaching the server; nil if none answers.
+    private func findServer() async -> URL? {
         let scan = BonjourScan()
         scan.start()
         defer { scan.stop() }
         let started = Date()
 
         // 1. Known local servers: answers in well under a second when on the same network.
-        if let url = await firstHealthy(localServers, timeout: 2) { return use(url) }
-        if Task.isCancelled { return }
+        if let url = await firstHealthy(localServers, timeout: 3) { return url }
+        if Task.isCancelled { return nil }
 
         // 2. Whatever Bonjour found meanwhile (give it ~2.5 s in total).
         let wait = 2.5 - Date().timeIntervalSince(started)
         if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-        if Task.isCancelled { return }
+        if Task.isCancelled { return nil }
         for advert in scan.adverts {
             if let pub = advert.publicURL { publicServer = pub }
         }
         let advertised = scan.adverts.flatMap(\.urls).filter { !localServers.contains($0) }
-        if let url = await firstHealthy(advertised, timeout: 2) { return use(url) }
-        if Task.isCancelled { return }
+        if let url = await firstHealthy(advertised, timeout: 3) { return url }
+        if Task.isCancelled { return nil }
 
         // 3. Far away: the public address.
-        if let pub = publicServer, let url = await firstHealthy([pub], timeout: 8) { return use(url) }
-        if Task.isCancelled { return }
-
-        log.notice("No server found")
-        state = .notFound
+        if let pub = publicServer, let url = await firstHealthy([pub], timeout: 8) { return url }
+        return nil
     }
 
     /// Connect to a specific server (manual entry or quick pick).
     func use(_ url: URL) {
+        searchTask?.cancel()
         log.notice("Using server \(url.absoluteString, privacy: .public)")
         let isPublic = url.scheme == "https" || url == publicServer
         if isPublic { publicServer = url } else { remember(url) }
@@ -108,15 +120,8 @@ final class ServerFinder: ObservableObject {
         Task { await learnAddresses(from: url) }
     }
 
-    /// The page to show: the server's iPad view, with the pairing code when known.
-    func pageURL(for server: URL) -> URL {
-        var parts = URLComponents(url: server.appendingPathComponent("ipad"), resolvingAgainstBaseURL: false)!
-        if let pairCode { parts.queryItems = [URLQueryItem(name: "pair", value: pairCode)] }
-        return parts.url!
-    }
-
-    /// The web page failed to load: the server may have moved (e.g. we left the room
-    /// and need the public address). Search again unless that's what just failed.
+    /// The server stopped answering: it may have moved (e.g. we left the room and need
+    /// the public address). Search again.
     func currentServerFailed() {
         guard case .found = state else { return }
         search()

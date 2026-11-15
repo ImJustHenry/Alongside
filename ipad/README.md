@@ -1,6 +1,22 @@
 # Alongside Live (iPad app)
 
-A native iPad app that opens the Alongside server's paired iPad view (`/ipad`) full-screen. You see the Quest wearer's camera view and draw back. It's a SwiftUI + WKWebView wrapper; the drawing and live-view features are the web client in [`../server`](../server).
+A fully native SwiftUI iPad app for Alongside. You see the Quest wearer's camera view live and draw back with your finger or Apple Pencil. The headset places each stroke in 3D on the real surface you drew over.
+
+It talks to the server in [`../server`](../server) directly:
+- **Pairing and joining:** REST (`/api/live/current`, `/api/rooms/:id/join`).
+- **Live connection:** the `/live` WebSocket carries camera frames, room state and presence, and sends `remoteStroke` messages.
+- **Room actions:** undo, clear and Ask AI go over REST.
+
+The server's web client (`/ipad` in a browser) still works for people without the app.
+
+| File | Role |
+| --- | --- |
+| `ServerFinder.swift`, `ServerAddress.swift`, `ServerSetupView.swift` | Finding the server (saved addresses, Bonjour, public address, app links). |
+| `Live/LiveSession.swift` | Pairing, join, WebSocket with reconnect, frame decoding, following the Quest's room, stroke protocol. |
+| `Live/LiveStage.swift` | Camera view (Canvas) and touch/Pencil input. |
+| `Live/LiveScreen.swift` | Top bar, tool dock, pop-up messages, waiting card, session menu. |
+| `Live/PairingView.swift` | Pairing and connecting screens, and the screen-picking `LiveRootView`. |
+| `Live/Models.swift`, `Live/AlongsideAPI.swift` | Wire types and REST client. |
 
 ## Install on your iPad
 
@@ -28,12 +44,12 @@ How the app chooses, in order:
 
 It searches again when the network changes or the page fails to load. A **Remote** badge shows when it's connected over the internet.
 
-The pairing code is stored by the app, so it works on every address of the same server.
+The app stores the pairing code and its room membership, so reopening it rejoins the same room without adding a duplicate member. When the Quest opens a new room, the app follows it within about 5 seconds.
 
 ## Debugging
 
-- In Safari on the Mac: Develop → *your iPad* → Alongside Live.
-- Which server the app picked: Console.app, filter on subsystem `edu.slu.stanfordxr.alongside.ipad`.
+- Logs: in Console.app, filter on subsystem `edu.slu.stanfordxr.alongside.ipad`. They show the chosen server, the room joined and socket reconnects.
+- Debug builds accept the launch argument `-AlongsideDemoStroke YES`. Once video is live, the app draws one stroke through the normal drawing path, so you can test stroke sending without touch (e.g. in the simulator).
 
 ## Test without a headset
 
@@ -50,4 +66,4 @@ npm run fake-quest     # terminal 2
 - It places your strokes in 3D the way the Quest does: it ray-casts them onto the desk, whiteboard, walls or floor. Marks stay stuck to those surfaces as the view moves, and the app shows which surface each stroke landed on.
 - The simulated wearer's hands appear as green dots. The wearer also draws two marks of their own: a circle on the desk and an arrow on the whiteboard.
 
-To try it without the app, open `http://localhost:4173/ipad` in any browser.
+To try the browser version instead, open `http://localhost:4173/ipad`.
