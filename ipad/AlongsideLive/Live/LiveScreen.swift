@@ -188,6 +188,10 @@ struct LiveScreen: View {
 
             Divider().frame(height: 28).overlay(.white.opacity(0.12))
 
+            IconButton(systemName: session.airMode ? "wind" : "square.stack.3d.down.right",
+                       label: session.airMode ? "Drawing in the air (tap for surfaces)" : "Drawing on surfaces (tap for air)",
+                       on: session.airMode) { session.airMode.toggle() }
+
             IconButton(systemName: "arrow.uturn.backward", label: "Undo my spatial stroke") { session.undo() }
                 .disabled(!session.canDraw)
             IconButton(systemName: "trash", label: "Clear my strokes") { confirmClear = true }

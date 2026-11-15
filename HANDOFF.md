@@ -62,7 +62,7 @@ Key runtime files:
 
 - **Meta app:** "Alongside LiveView", app ID `1356417340898608`, team "Futuer Resonance". Platform: Meta Horizon Store, unpublished.
 - **Channel:** **ALPHA**, private and invite-only. The owner's Meta account is a member.
-- **Latest build:** **0.1.17 (versionCode 18)**, uploaded 6:20 AM Nov 15. Package `edu.slu.stanfordxr.alongside`.
+- **Latest build:** **0.1.18 (versionCode 20)**, uploaded 8:48 AM Nov 15. Package `edu.slu.stanfordxr.alongside`.
 - **Installing on the headset:** Store, search "Alongside LiveView", Install. If you only see "0.1.0", uninstall and reinstall; the Store listing caches the old name.
 - **How to confirm the new build is running:** the first LiveView button reads **"Ink: surfaces"**.
 
@@ -86,7 +86,9 @@ Key runtime files:
 | 0.1.14 (15) | **Shizuku renamed to GPT**, and GPT sees through the stream; details below. **Bug (Henry, real Quest 3S):** Camera ON sends ONE black frame, then stops. The server's `FrameHub.sweep()` ends the stream after 5 s with no frames, which closes the camera on the Quest. GPT had nothing to see for the same reason. |
 | 0.1.15 (16) | Camera stream fix plus on-HUD diagnostics; details below. In the editor (laptop webcam) the stream ran **35 s continuously at 11.5 fps** (402 frames, no stops), watched like the iPad. **Verified on the headset: the iPad connects and gets live video.** **Bugs:** the iPad view was **upside down**, and VR strokes didn't fully show or line up on the iPad. |
 | 0.1.16 (17) | iPad view orientation and overlay fixes; details below. Editor: 11.1 fps with the VR stroke overlay complete (30/30 points); the View cycle works. **Verified on the headset: the iPad view is upright with the default (View 1/4, no flip).** **Bug:** the VR wearer's drawings came out as **dotted lines**. |
-| 0.1.17 (18) | Anti-dotting fix for VR ink; details below. Compiles; it depends on live headset input, so it's untested in the editor and not yet seen on the headset. |
+| 0.1.17 (18) | Anti-dotting fix for VR ink; details below. |
+| 0.1.18 (19) | A surface-depth stabilizer (median filter). **Withdrawn at the user's request;** the ink code was reverted to 0.1.17. |
+| 0.1.18 (20) | Ink code identical to 0.1.17, plus two changes. **Not yet seen on the headset.**<ul><li>**The HUD launches in front of you:** straight ahead, 0.6 m away and slightly below eye level. It used to be low-left. It also re-places itself if the headset recenters the tracking origin around launch, keeps re-aiming for 4 s until you move it yourself, and comes back in front when the app regains focus (`ControlHud`).</li><li>**iPad air drawing:** a **Surface/Air** toggle on the iPad app's dock and the web client's dock sends `mode: "air"` on `remoteStroke`. The server forwards it, and the headset places the whole stroke on a camera-facing plane at the depth the first point hits (1.2 m if nothing), instead of ray-casting each point onto surfaces.</li></ul>Older iPad apps send no mode and keep surface behaviour. `tests/air-mode.test.js` passes, 101/101 in all. **The native iPad app must be rebuilt in Xcode** to get the toggle; the browser client has it now. |
 
 **0.1.17 anti-dotting (`LiveViewController.Update`, `Commit`):**
 - **Cause:** any one-frame dropout ended the stroke and started a new one-point stroke, which renders as a dot (`SpatialStrokeMesh` draws each stroke as one continuous tube). Dropouts came from the surface ray flickering at plane edges or mesh holes, pinch-strength or trigger wobble, hand-tracking loss, and the 512-point cap. Tracking loss used to *discard* the stroke outright.

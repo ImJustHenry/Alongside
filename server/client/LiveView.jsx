@@ -115,6 +115,7 @@ export default function LiveView({
     [connected, setConnected] = useState(false),
     [color, setColor] = useState("#da6b45"),
     [width, setWidth] = useState(0.006),
+    [airMode, setAirMode] = useState(false),
     [metrics, setMetrics] = useState({ fps: 0, age: 0, calibration: "—" }),
     [notice, setNotice] = useState(
       "Waiting for the Quest host to turn on the camera.",
@@ -478,6 +479,8 @@ export default function LiveView({
     sendStroke("preview");
     paintRef.current();
   }
+  const airRef = useRef(false);
+  airRef.current = airMode;
   function sendStroke(phase) {
     const s = stroke.current;
     if (!s) return;
@@ -490,6 +493,7 @@ export default function LiveView({
       points: s.points,
       color: s.color,
       width: s.width,
+      mode: airRef.current ? "air" : "surface",
     });
   }
   function move(e) {
@@ -734,6 +738,16 @@ export default function LiveView({
             ))}
           </div>
           <span className="lv-sep" />
+          <button
+            className={"lv-icon" + (airMode ? " on" : "")}
+            aria-pressed={airMode}
+            aria-label={airMode ? "Drawing in the air (tap for surfaces)" : "Drawing on surfaces (tap for air)"}
+            title={airMode ? "Air: strokes float facing the wearer" : "Surface: strokes land on real surfaces"}
+            onClick={() => setAirMode((a) => !a)}
+            style={{ fontSize: 12, fontWeight: 700, width: "auto", padding: "0 10px" }}
+          >
+            {airMode ? "AIR" : "SURFACE"}
+          </button>
           <button
             className="lv-icon"
             aria-label="Undo my spatial stroke"

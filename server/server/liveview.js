@@ -43,6 +43,8 @@ export const remoteSchema = z
     points: z.array(uv).min(1).max(256),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     width: finite.min(0.001).max(0.03),
+    // "surface" (default): land on real surfaces. "air": float on a camera-facing plane (iPad air drawing).
+    mode: z.enum(["surface", "air"]).optional(),
   })
   .strict();
 const projection = z.object({
@@ -334,6 +336,7 @@ export class FrameHub {
     if (a.phase === "commit") p.committed = true;
     p.color = a.color;
     p.width = a.width;
+    p.mode = a.mode || p.mode || "surface";
     p.points = a.points;
     p.revision = (p.revision || 0) + 1;
     this.send(s.source, {
@@ -345,6 +348,7 @@ export class FrameHub {
       points: a.points,
       color: a.color,
       width: a.width,
+      mode: p.mode,
       ownerId: actor.id,
       ownerName: actor.name,
       source: actor.kind === "ai" ? "ai" : "remote",

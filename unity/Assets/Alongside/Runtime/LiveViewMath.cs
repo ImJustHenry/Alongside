@@ -17,7 +17,7 @@ namespace Alongside {
  public string type="frame",epoch,source="quest-webcam",calibration="estimated";public int seq,w,h;public double ts;
  public FrameIntrinsics intrinsics=new FrameIntrinsics();public FramePose pose=new FramePose();public List<FrameOverlay> overlays=new List<FrameOverlay>();public List<FramePoint> hands=new List<FramePoint>();
 }
-[Serializable] public class ReprojectionRequest {public string type,requestId,phase,ownerId,ownerName,source,color;public int revision;public float width;public CameraFrame frame;public List<FramePoint> points;}
+[Serializable] public class ReprojectionRequest {public string type,requestId,phase,ownerId,ownerName,source,color,mode;public int revision;public float width;public CameraFrame frame;public List<FramePoint> points;}
 public static class LiveMath {
  // Room and camera conventions: Unity axes x-right/y-up/z-forward; JPEG u/v are top-left normalized.
  public static Ray Ray(CameraFrame f,FramePoint p){var i=f.intrinsics;var d=new Vector3((p.u*f.w-i.cx)/i.fx,(i.cy-p.v*f.h)/i.fy,1).normalized;return new Ray(f.pose.Position,f.pose.Rotation*d);}

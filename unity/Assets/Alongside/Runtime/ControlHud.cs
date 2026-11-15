@@ -8,8 +8,11 @@ namespace Alongside {
 // there ("Board" button) but hidden by default.
 public class ControlHud : MonoBehaviour {
  public const float Scale = .2f;              // HUD local units -> metres
- // Where it first appears (and where "Bring here" puts it): low and to the left, tilted up toward the face.
- public float distance = .5f, drop = .29f, side = -.2f;
+ // Where it first appears (and where "Bring here" puts it): straight ahead, a little below eye level, facing the wearer.
+ // 0.1.18: was low-left (side -.2, drop .29), which together with the launch-time tracking-origin shift often left it
+ // off to the side or behind the wearer.
+ public float distance = .6f, drop = .16f, side = -.02f; // the panel centre sits at (+.02, +.044) m from the HUD origin, so this centres it
+ public const float SettleSeconds = 4f, ViewCone = 30f;
  public bool Minimized { get; private set; }
  public bool BoardVisible { get; private set; }
  public bool Dragging => dragPointer >= 0;
@@ -18,6 +21,14 @@ public class ControlHud : MonoBehaviour {
  public ShizukuCompanion Shizuku { get; private set; }
  BoardButton boardButton, minimizeButton, pillButton, handle, shizukuButton; readonly Dictionary<string, BoardButton> swatches = new Dictionary<string, BoardButton>();
  bool placed; float placeAfter; int dragPointer = -1; float dragDistance; Vector3 dragLocalGrab;
+ // Launch placement keeps re-aiming at the wearer until they move it themselves: for SettleSeconds after the first
+ // placement, after any tracking-origin change (Quest recenters around app launch), and when the app regains focus.
+ bool userMoved, originHooked, originChanged; float settleUntil;
+ readonly List<UnityEngine.XR.XRInputSubsystem> inputSubsystems = new List<UnityEngine.XR.XRInputSubsystem>();
+ void OnOriginUpdated(UnityEngine.XR.XRInputSubsystem _) => originChanged = true;
+ void OnApplicationFocus(bool focus) { if (focus && placed) { PlaceInFront(); settleUntil = Time.realtimeSinceStartup + 2f; } }
+ bool InView() { var to = transform.position - head.position; return to.sqrMagnitude > 1e-4f && Vector3.Angle(head.forward, to) < ViewCone && to.magnitude < 1.5f; }
+ void OnDestroy() { foreach (var s in inputSubsystems) if (s != null) s.trackingOriginUpdated -= OnOriginUpdated; }
 
  public static ControlHud Create(BoardController board, Transform liveViewRow) {
   var hud = new GameObject("Alongside HUD").AddComponent<ControlHud>();
@@ -104,11 +115,15 @@ public class ControlHud : MonoBehaviour {
   Refresh();
   // First placement waits until the headset reports a tracked head pose (early frames sit at the tracking origin,
   // which put the HUD on the floor / behind the wearer in 0.1.8), then a short settle delay.
+  if (!originHooked) { SubsystemManager.GetSubsystems(inputSubsystems); if (inputSubsystems.Count > 0) { foreach (var s in inputSubsystems) s.trackingOriginUpdated += OnOriginUpdated; originHooked = true; } }
   if (!placed) {
    if (!HeadTracked()) { placeAfter = Time.realtimeSinceStartup + 1f; return; }
-   if (Time.realtimeSinceStartup >= placeAfter) PlaceInFront();
+   if (Time.realtimeSinceStartup >= placeAfter) { PlaceInFront(); settleUntil = Time.realtimeSinceStartup + SettleSeconds; }
    return;
   }
+  if (originChanged) { originChanged = false; if (!userMoved) { PlaceInFront(); settleUntil = Time.realtimeSinceStartup + 2f; } }
+  // Settle window: while the head pose is still settling, keep it in front unless the wearer has moved it.
+  if (!userMoved && dragPointer < 0 && Time.realtimeSinceStartup < settleUntil && !InView()) PlaceInFront();
   // Safety net: if the HUD ends up out of reach (walked away, or a bad first pose), bring it back.
   if (dragPointer < 0 && Vector3.Distance(transform.position, head.position) > ReturnDistance) PlaceInFront();
   // Summon: press either thumbstick in to bring the HUD in front of you (and un-minimize it).
@@ -119,7 +134,7 @@ public class ControlHud : MonoBehaviour {
   // Grab: trigger or pinch while pointing at the handle.
   if (dragPointer < 0 && !Minimized) foreach (var p in input.Pointers) {
    if (!p.down || !Physics.Raycast(p.ray, out var hit, 10f) || hit.collider.GetComponentInParent<BoardButton>() != handle) continue;
-   dragPointer = p.id; dragDistance = hit.distance; dragLocalGrab = transform.InverseTransformPoint(hit.point); handle.SetActive(true); break;
+   dragPointer = p.id; userMoved = true; dragDistance = hit.distance; dragLocalGrab = transform.InverseTransformPoint(hit.point); handle.SetActive(true); break;
   }
   if (dragPointer < 0) return;
   // Drag: keep the grabbed point at the same distance along the pointer ray; keep facing the wearer.

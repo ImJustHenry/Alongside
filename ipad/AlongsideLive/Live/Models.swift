@@ -83,6 +83,8 @@ struct RemoteStroke: Encodable {
     let points: [UV]
     let color: String
     let width: Double
+    /// "surface": lands on real surfaces in the wearer's room. "air": floats facing the camera (Quest 0.1.18+).
+    let mode: String
 }
 
 // MARK: Colors

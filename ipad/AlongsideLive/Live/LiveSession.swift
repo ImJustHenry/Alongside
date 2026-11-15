@@ -37,6 +37,8 @@ final class LiveSession: ObservableObject {
     // Drawing settings
     @Published var inkHex = "#da6b45"
     @Published var width: Double = 0.006
+    /// Air drawing: strokes float in front of the wearer instead of landing on real surfaces.
+    @Published var airMode = false
     @Published var showLabels = true
 
     let server: URL
@@ -480,7 +482,7 @@ final class LiveSession: ObservableObject {
     private func sendStroke(_ phase: String) {
         guard let s = stroke else { return }
         send(RemoteStroke(id: s.id, epoch: s.frame.meta.epoch, frameSeq: s.frame.meta.seq, phase: phase,
-                          points: s.points, color: s.color, width: s.width))
+                          points: s.points, color: s.color, width: s.width, mode: airMode ? "air" : "surface"))
     }
 
     // MARK: Actions
