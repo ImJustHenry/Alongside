@@ -1,8 +1,19 @@
 # Alongside handoff (for the next developer or AI)
 
-State as of **2026-11-14, about 11:40 PM PT**. Hackathon: Immerse the Bay 2026 (Stanford XR). Pens down **9:00 AM Sun Nov 15**. The submission needs Devpost, a vertical video of 30 seconds or less, and this public MIT repo.
+State as of **2026-11-15, about 4:40 AM PT**. Hackathon: Immerse the Bay 2026 (Stanford XR). Pens down **9:00 AM Sun Nov 15**. The submission needs Devpost, a vertical video of 30 seconds or less, and this public MIT repo.
 
 Read this before changing builds. It records what's been verified, what hasn't, and the traps already hit.
+
+## 0. At a glance (start here)
+
+| Area | State |
+| --- | --- |
+| **Repo** | `main` on github.com/ImJustHenry/Alongside. Pacino's Quest work (`b7c5cd3`) is merged with Henry's native iPad app (`646e7f0`) in `474000c`, and pushed. |
+| **Quest app** | **0.1.14 (code 15)** on the Meta ALPHA channel. Verified on the headset: passthrough, surface ink, air ink, the draggable HUD, hotspot connection, Camera ON streaming, and GPT hearing and answering. **Not yet verified:** GPT *seeing* on the headset (0.1.14 is the fix; see §3). |
+| **GPT** (was "Shizuku") | Voice + vision companion. Wake word "GPT". Works end to end on the laptop and in the editor with a webcam. Needs `OPENAI_API_KEY` in `server/.env` (git-ignored, with credit on the account). |
+| **iPad app** | Native SwiftUI in `ipad/` (Henry). **Needs a Mac with Xcode to build**; it can't be built on the Windows laptop. Its protocol was verified against the merged server with `server/examples/ipad-sim.mjs` and the fake Quest (§8). |
+| **Server** | Runs from **this repo's `server/`** (`npm ci` done; `npm start`). The old copy in `Desktop\hackathon\alongside-server` is obsolete: it lacks the iPad and discovery support. |
+| **Network for the demo** | The laptop's Windows Mobile hotspot (laptop = `192.168.137.1`). Quest, iPad and phones join it; pause any VPN. Campus and hotel Wi-Fi block devices from reaching each other (§7). |
 
 ---
 
@@ -13,8 +24,9 @@ Alongside is a shared board for learning together:
   - sees the board in passthrough mixed reality
   - draws on the board, in the air, or **on real objects** (desks, walls, furniture)
   - can stream the headset camera to the room
-- **Phone, iPad and browser users (web client served by the Node server):** join the same room, see the board and the Quest camera view, and draw marks. Those marks are reprojected into 3D in the wearer's space.
-- **AI layer:** a deterministic "scripted practice guide" unless a real AI provider key is configured on the server.
+- **iPad (native app in `ipad/`) and phone/browser users (web client served by the Node server):** join the same room, see the board and the Quest camera view, and draw marks with a finger or Apple Pencil. Those marks are reprojected into 3D on the real surface in the wearer's space.
+- **GPT companion (headset):** say "GPT, …" and a chibi-maid helper beside the HUD looks through the headset camera and answers out loud (OpenAI).
+- **Board AI layer:** a deterministic "scripted practice guide" unless a real AI provider key is configured for the room.
 
 ## 2. Repo layout
 
@@ -25,6 +37,11 @@ Alongside is a shared board for learning together:
 | `unity/Assets/Alongside/Editor/` | Setup and build helpers (`AlongsideSetup`, `LiveViewSetup`, manifest fixers). |
 | `unity/Packages/com.unity.xr.hands/` | XR Hands 1.10, stored inside the project and overriding the registry version. Keep it. |
 | `server/` | Node (Express + WebSocket) room server. `dist/` is the built web client and **must stay committed**, because `npm ci --omit=dev` skips Vite. |
+| `server/server/shizuku.js` | GPT endpoint `POST /api/rooms/:room/shizuku`: OpenAI speech-to-text, vision chat and text-to-speech. (Internal names still say "shizuku".) |
+| `server/server/discovery.js` | Henry: LAN address discovery, Bonjour advertising for the iPad app, the `alongside-live://` app link, and an optional cloudflared tunnel (`npm run start:remote`). |
+| `server/examples/fake-quest.mjs` | Henry: plays the headset's part (hosts a room, streams a simulated room, places strokes in 3D). `npm run fake-quest`. |
+| `server/examples/ipad-sim.mjs` | Headless stand-in for the native iPad app: pairs, joins, watches live frames, sends a stroke and waits for the headset's `remoteResult`. |
+| `ipad/` | Henry's native SwiftUI iPad app, "Alongside Live" (Xcode 16+, iPadOS 17+). See `ipad/README.md`. |
 
 Key runtime files:
 - `BoardController.cs`: board, toolbar, side panel, sessions. Has `startMode` (Local/CreateRoom/JoinInvite) and `serverUrl`.
@@ -34,7 +51,8 @@ Key runtime files:
   - Runs the per-frame hand and controller ink loop.
   - Handles camera stream start/stop and reprojects remote marks.
 - `SurfaceInk.cs` (added 2026-11-14): makes real-world geometry drawable. See section 6.
-- `ControlHud.cs` (added 2026-11-15): the headset's follow-me control HUD. It reparents the LiveView row into itself and hides or shows `board.view`. Created by `LiveViewController.EnableHud()` when XR starts.
+- `ControlHud.cs` (added 2026-11-15): the headset's control HUD, now draggable and world-locked (see 0.1.8–0.1.10). It reparents the LiveView row into itself and hides or shows only the board's *visual* children. Created by `LiveViewController.EnableHud()` when XR starts.
+- `ShizukuCompanion.cs`: the GPT companion (mic, voice activity detection, chibi-maid avatar, speech playback, camera stream and snapshot). `LiveViewController.EnsureStreaming()` is how GPT turns on Camera ON.
 - `XRRig.cs`: head pose, recenter, `SetMixedReality()`. Adds `ARCameraManager` and `ARSession` at runtime. The camera clears to a solid colour with alpha 0.
 - `LiveCameraSource.cs`: Quest camera through `WebCamTexture`. Requests `horizonos.permission.HEADSET_CAMERA` and then `android.permission.CAMERA`.
 - `ServerSession.cs` / `LocalSession.cs`: networking (REST plus WebSocket) and offline mode.
@@ -88,9 +106,16 @@ Key runtime files:
   - Sprites/Default is transparent, so each part has an explicit render queue (2989–3013), painted back to front. She always faces the wearer.
   - The **droplet hair clip** is her status light: grey when off, blue when listening, cyan when hearing you, pulsing while thinking.
 
-### Shizuku (voice + vision companion, 0.1.11)
+### GPT companion (introduced as "Shizuku" in 0.1.11; renamed in 0.1.14)
 
-**What it is:** an original water-droplet mascot (no Live2D: the SDK and model weren't available and need the user's own license acceptance) that floats beside the HUD. The **Shizuku: off/on** button on the HUD turns the mic on; it's off by default.
+**Current behaviour (0.1.14):**
+- **Look and switch:** a chibi-maid avatar beside the HUD (originally a droplet mascot; not Live2D, because the SDK and model weren't available). The **GPT: off/on** HUD button turns it on; it's off by default.
+- **On:** turns on the mic and starts the room camera stream.
+- **Wake word "GPT":** only utterances that start with it get an answer.
+- **Seeing:** the latest stream frame (up to 8 s old), plus its own snapshot when that works.
+- **Not yet confirmed on the headset:** that it sees (the editor and laptop tests pass). If it can't, the bubble says why for both the stream and the snapshot, and the server console logs one `[GPT]` line per question.
+
+The details below describe the original 0.1.11 design; the pipeline is unchanged apart from the rename and the seeing fixes.
 
 **Headset side (`ShizukuCompanion.cs`):**
 - Requests `RECORD_AUDIO`, which `LiveViewAndroidManifest` now also declares.
@@ -110,10 +135,12 @@ Key runtime files:
 - The key comes **only from `OPENAI_API_KEY` in `server/.env`**. Restart the server after setting it.
 - Optional overrides: `SHIZUKU_MODEL`, `SHIZUKU_STT_MODEL`, `SHIZUKU_TTS_MODEL` and `SHIZUKU_VOICE` (see `.env.example`).
 
-**Tested on the laptop:**
-- Without a key, the endpoint returns a clear 503, and the error shows in Shizuku's bubble on a Unity-to-server round trip.
-- The WAV encoder and decoder round-trip, including streaming headers with unknown data sizes.
-- **Not tested:** real OpenAI calls (no key available), and the mic on the Quest.
+**Tested:**
+- **Real OpenAI calls on the laptop:** a spoken question became a reply with about 5 s of speech in roughly 4–5 s. Non-addressed speech is ignored. With an image, it described the image correctly. Also re-tested on the merged server.
+- **On the Quest:** hearing and spoken replies work over the hotspot (0.1.11+).
+- **Errors:** without a key, or with no credit on the account, the endpoint returns a clear error that shows in the bubble.
+- **Audio:** the WAV encoder and decoder round-trip, including the TTS streaming header with an unknown data size.
+- **Costs:** each question costs a fraction of a cent. With GPT on, every utterance the mic picks up is transcribed by OpenAI, so turn it off when not in use.
 
 **0.1.10 HUD placement fixes:**
 - The first placement waits for a **tracked** head pose (CenterEye `isTracked`, non-zero position), then 1 s more.
@@ -154,7 +181,7 @@ Key runtime files:
 ## 4. How to ship a new build (tested procedure)
 
 1. **Bump the version in PlayerSettings and confirm it stuck.**
-   - Set `bundleVersion` and `Android.bundleVersionCode`, which must be higher than 5. Then `AssetDatabase.SaveAssets()`.
+   - Set `bundleVersion` and `Android.bundleVersionCode`, which must be higher than the last upload (currently **15**). Then `AssetDatabase.SaveAssets()`.
    - Read the values back before building. One build silently reverted to the old version (see Gotchas).
 2. **Set up release signing.** Unity forgets keystore passwords after a restart.
    - Set `PlayerSettings.Android.useCustomKeystore = true`.
@@ -223,7 +250,7 @@ The keystore and its password file are **in the original working copy only**: `D
   - Strokes begun on a surface get `placement = "scene-plane"`, and they skip points while off-surface instead of jumping into the air.
   - The server only accepts `room`, `scene-plane` or `fixed-distance` (see `server/server/liveview.js`).
 - **Ink button:** cycles **Ink: surfaces → Ink: air → Ink: OFF**.
-- **Status:** works in the build (the user saw "Ink: surfaces"). **Not confirmed on the device:** that mesh and box colliders actually populate on the Quest 3S, and how well drawing feels.
+- **Status:** verified on the Quest 3S: ink sticks to real surfaces and "drawing works well" (user, 0.1.9). §3 has the later behaviour: surface-only mode with 3 m reach and the pointer. Whether the full room *mesh*, not just planes and boxes, populates on the 3S hasn't been checked specifically.
 
 ## 7. Networking (what blocks the camera)
 
@@ -232,16 +259,24 @@ The keystore and its password file are **in the original working copy only**: `D
   - the WebSocket is connected to the server
   - the camera permission was granted
 - **The server:**
-  - Start it with `cd server && npm start`.
+  - Start it with `cd server && npm start`, from **this repo**. The old `hackathon/alongside-server` copy has no iPad or discovery support.
   - It binds `0.0.0.0:4173`, and the health check is `GET /api/health`.
   - The Windows firewall already allows Node inbound on Public networks.
+  - **Startup prints:** the iPad **pairing code** (new on each run), every LAN address, an `alongside-live://connect?...` app link and a QR code.
+  - **`http://localhost:4173/connect`** shows the same QR code for iPads to scan.
+  - `npm run start:remote` adds a public HTTPS address through a cloudflared tunnel, for "far away" iPads. It needs `cloudflared` installed; this hasn't been tried.
+- **How devices find the Quest's room:** a room created by a client whose User-Agent contains `UnityPlayer` (the real Quest app, or the fake Quest) becomes the "live current" room. The paired iPad gets it from `GET /api/live/current` with the `X-Pair-Code` header.
 - **Campus (Stanford) and hotel Wi-Fi block devices from reaching each other.** The Quest can't reach the laptop and stays in "Local session", so Camera ON refuses to start.
   - **The fix:** turn on the laptop's Windows **Mobile hotspot**, which shares the hotel or campus Wi-Fi. The laptop is then always `192.168.137.1`.
   - Connect the Quest, phone and iPad to that hotspot.
   - Pause NordVPN, which also blocks local connections.
   - Web viewers open `http://192.168.137.1:4173`.
 - **Laptop IPs seen:** `10.16.92.33` (Stanford) and `192.168.102.237` (Comfort Inn). Neither is reachable from other devices, because of the network isolation above.
-- **Not yet verified:** the Quest actually joining a room over the hotspot, and Camera ON streaming passthrough frames. `LiveCameraSource` uses WebCamTexture with an estimated calibration. An MRUK `PassthroughCameraAccess` hookup through reflection exists, but it's unused.
+- **Verified on the headset:** the Quest joins a room over the hotspot, and Camera ON streams frames (the server log showed a 2 s old stream frame from the real Quest). `LiveCameraSource` uses WebCamTexture with an estimated calibration. An MRUK `PassthroughCameraAccess` hookup through reflection exists, but it's unused.
+- **Hotspot quirks:**
+  - Windows may say "no internet connection to share" even though the laptop is online. It still works: the Quest only needs to reach the laptop, and the laptop talks to OpenAI.
+  - Turn the hotspot's **Power saving off**, or Windows switches the hotspot off when idle.
+  - The hotspot name and password are in Settings → Network & internet → Mobile hotspot. They're not recorded here because this repo is public.
 
 ## 8. Device and tooling state
 
@@ -254,6 +289,21 @@ The keystore and its password file are **in the original working copy only**: `D
 - **Desktop test:**
   - Play mode in the Editor renders the board.
   - `AlongsideDebug.Status()` reports "LOCAL · not connected" when the server is down.
+  - **Testing the HUD and GPT in the editor:**
+    - The HUD only starts in XR, so call `LiveViewController.EnableHud()` from `script_eval`.
+    - Join a room with `AlongsideDebug.Create("http://localhost:4173", "name")`.
+    - Turn GPT on with `ShizukuCompanion.SetEnabled(true)`. The stream uses the laptop webcam.
+    - To feed a spoken question, call the private `Send(float[])` with a 16 kHz WAV made by Windows TTS (`System.Speech`).
+- **iPad app (needs a Mac):**
+  - In Xcode 16+, open `ipad/AlongsideLive.xcodeproj` and set Signing → Team to an Apple ID.
+  - Plug in the iPad and press Run, then trust the developer certificate on the iPad.
+  - To pair: put the iPad on the same hotspot and scan the QR code at `http://localhost:4173/connect`.
+- **Testing the iPad protocol without a Mac:**
+  - Run `npm start` and `npm run fake-quest` in two terminals under `server/`.
+  - Then run `node examples/ipad-sim.mjs http://127.0.0.1:4173 <pairing code>`.
+  - Expected output: paired, then joined, then live JPEG frames (480×360), then the stroke sent, then `remoteResult` with placement `scene-plane`. Passed on 2026-11-15.
+  - Stop the fake Quest afterwards. While it runs it is the "live current" room, and real iPads would pair with it instead of the headset.
+  - Stroke ids must be UUIDs, or the server rejects them. The Swift app sends lowercase UUIDs.
 
 ## 9. Gotchas already hit
 
@@ -265,15 +315,17 @@ The keystore and its password file are **in the original working copy only**: `D
 - **Over Quest Link:** the reported head height can sit below the floor (`XRRig.Recenter` centres at eye height). Virtual "Meta Quest" webcams deliver no frames on the PC; the code picks a real webcam.
 - **Two Unity scenes exist.** The Editor sometimes reopens `Main.unity`; builds use `Alongside.unity`.
 
-## 10. Suggested next steps (priority order)
+## 10. Suggested next steps (priority order, pens down 9:00 AM)
 
-1. **On the headset, verify 0.1.4:**
-   - Passthrough is visible, not black.
-   - With the Quest on the laptop's hotspot, the status shows "Joined room".
-   - Camera ON shows frames in a browser at `http://192.168.137.1:4173`.
-2. **Verify surface ink on real objects.**
-   - If only flat planes work, the room mesh isn't populating on the 3S. Check `SurfaceInk.Count`, which could be surfaced in the status label.
-   - Consider a faint visual of the surfaces to aid aiming.
-3. **Show diagnostics in the app.** Without logcat, put passthrough, session and server status in the LiveView status label, for example `ARSession.state`, the camera subsystem's running state, the server URL in use and the surface count.
-4. **Theme for "Take Me To The Moon"** (the hackathon theme). The board content is still a generic 3-tile puzzle.
-5. **Submission:** a vertical video of 30 seconds or less (Quest capture plus the iPad view), the Devpost write-up, and pushing this repo publicly. The hackathon brief recommends the AI Horizons and Virtuous Reality tracks, plus Pico.
+1. **Verify GPT sees on the headset (0.1.14):**
+   - Hotspot on, server running from the repo, app joined to a room.
+   - Turn **GPT** on, then say "GPT, what am I looking at?"
+   - If it can't see, read the `(can't see: stream …; snapshot …)` bubble and the server's `[GPT]` log line.
+2. **Build the iPad app on a Mac** (Henry), pair it by QR code on the hotspot, and do one full rehearsal: the Quest wearer on the hotspot, the iPad drawing onto the wearer's real surfaces, and GPT answering.
+3. **Submission:**
+   - **Problem story first.** The judges asked for the individual with a specific pain. Candidates: a remote expert guiding a technician, or a tutor helping a student with a physical task.
+   - **A vertical video of 30 seconds or less:** a Quest capture plus an iPad screen recording.
+   - **Devpost write-up.** The repo is already public and MIT-licensed.
+   - **Tracks:** Virtuous Reality, plus AI Horizons now that GPT is a real vision + voice model (or Creative Zenith). Check the sponsor tracks' requirements before entering them.
+4. **Demo-day reliability:** keep a pre-recorded fallback clip. Bring the laptop on power with the hotspot's power saving off, and pause the VPN.
+5. **Nice to have:** the "Take Me To The Moon" theme. The board content is still a generic 3-tile puzzle, but the board is hidden by default now.
