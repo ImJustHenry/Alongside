@@ -44,7 +44,11 @@ public class ControlHud : MonoBehaviour {
   minimizeButton = BoardButton.Create(row, "Minimize", new Vector3(x + .1f, 0, 0), new Vector2(.25f, .10f), mat, () => SetMinimized(true), .030f); x += .29f;
   // Shizuku voice companion floats beside the HUD; off by default so the mic only listens when the wearer opts in.
   Shizuku = ShizukuCompanion.Create(board, transform);
-  shizukuButton = BoardButton.Create(row, "GPT: off", new Vector3(x + .1f, 0, 0), new Vector2(.25f, .10f), mat, () => { Shizuku.SetEnabled(!Shizuku.Enabled); shizukuButton.Label = Shizuku.Enabled ? "GPT: on" : "GPT: off"; shizukuButton.SetActive(Shizuku.Enabled); }, .030f);
+  shizukuButton = BoardButton.Create(row, "GPT: off", new Vector3(x + .1f, 0, 0), new Vector2(.25f, .10f), mat, () => { Shizuku.SetEnabled(!Shizuku.Enabled); shizukuButton.Label = Shizuku.Enabled ? "GPT: on" : "GPT: off"; shizukuButton.SetActive(Shizuku.Enabled); }, .030f); x += .29f;
+  // Stream orientation for the iPad view: cycles flip / rotate-180 combinations (remembered). Fix an upside-down iPad view in 1-3 taps.
+  var cam = board.GetComponent<LiveViewController>()?.cameraSource;
+  BoardButton viewButton = null;
+  viewButton = BoardButton.Create(row, "View " + ((cam != null ? cam.ViewMode : 0) + 1) + "/4", new Vector3(x + .1f, 0, 0), new Vector2(.25f, .10f), mat, () => { if (cam == null) return; viewButton.Label = "View " + (cam.CycleView() + 1) + "/4"; }, .030f);
   title = Draw.Text(content, "HUD title", "ALONGSIDE", new Vector3(-1.15f, .5f, 0), .045f, Model.ParseColor(Model.Ink), TextAnchor.MiddleLeft);
   // Drag handle across the top. It's a BoardButton so pinching on it never starts air ink (LiveView's menu block).
   handle = BoardButton.Create(content, "=  Drag here to move  =", new Vector3(.3f, .5f, 0), new Vector2(1.5f, .09f), mat, null, .030f);

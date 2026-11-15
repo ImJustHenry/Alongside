@@ -9,7 +9,7 @@ Read this before changing builds. It records what's been verified, what hasn't, 
 | Area | State |
 | --- | --- |
 | **Repo** | `main` on github.com/ImJustHenry/Alongside. Pacino's Quest work (`b7c5cd3`) is merged with Henry's native iPad app (`646e7f0`) in `474000c`, and pushed. |
-| **Quest app** | **0.1.14 (code 15)** on the Meta ALPHA channel. Verified on the headset: passthrough, surface ink, air ink, the draggable HUD, hotspot connection, Camera ON streaming, and GPT hearing and answering. **Not yet verified:** GPT *seeing* on the headset (0.1.14 is the fix; see §3). |
+| **Quest app** | **0.1.17 (code 18)** on the Meta ALPHA channel. Verified on the headset: passthrough, surface ink, air ink, the draggable HUD, hotspot connection, and GPT hearing and answering. **Broken through 0.1.14:** Camera ON sent only one black frame (Henry's report). **Fixed in 0.1.15** (verified: the iPad gets live video from the Quest). 0.1.16 fixes the upside-down iPad view (a HUD View button cycles orientation) and the VR stroke overlays. **Verified:** the 0.1.16 iPad view is upright by default. **Not yet verified on the headset:** GPT seeing, and VR stroke alignment on the iPad. |
 | **GPT** (was "Shizuku") | Voice + vision companion. Wake word "GPT". Works end to end on the laptop and in the editor with a webcam. Needs `OPENAI_API_KEY` in `server/.env` (git-ignored, with credit on the account). |
 | **iPad app** | Native SwiftUI in `ipad/` (Henry). **Needs a Mac with Xcode to build**; it can't be built on the Windows laptop. Its protocol was verified against the merged server with `server/examples/ipad-sim.mjs` and the fake Quest (§8). |
 | **Server** | Runs from **this repo's `server/`** (`npm ci` done; `npm start`). The old copy in `Desktop\hackathon\alongside-server` is obsolete: it lacks the iPad and discovery support. |
@@ -62,7 +62,7 @@ Key runtime files:
 
 - **Meta app:** "Alongside LiveView", app ID `1356417340898608`, team "Futuer Resonance". Platform: Meta Horizon Store, unpublished.
 - **Channel:** **ALPHA**, private and invite-only. The owner's Meta account is a member.
-- **Latest build:** **0.1.14 (versionCode 15)**, uploaded 4:02 AM Nov 15. Package `edu.slu.stanfordxr.alongside`.
+- **Latest build:** **0.1.17 (versionCode 18)**, uploaded 6:20 AM Nov 15. Package `edu.slu.stanfordxr.alongside`.
 - **Installing on the headset:** Store, search "Alongside LiveView", Install. If you only see "0.1.0", uninstall and reinstall; the Store listing caches the old name.
 - **How to confirm the new build is running:** the first LiveView button reads **"Ink: surfaces"**.
 
@@ -83,7 +83,41 @@ Key runtime files:
 | 0.1.11 (12) | Air ink starts 1 cm ahead of the controller pose (was 7 cm). Adds **Shizuku**, the voice + vision companion; see the section below. **Verified on the Quest** over the laptop hotspot. **Bug:** it always said the camera was off, because it only used Camera ON stream frames from the last 4 s. |
 | 0.1.12 (13) | Shizuku sees and looks new; details below. Snapshot path tested on the laptop with a real image. **On the headset she still couldn't see**, cause unknown (no logcat). |
 | 0.1.13 (14) | Camera diagnostics, listed below the table. **The server log showed every Quest request with `headset image: none`:** the snapshot path fails on the Quest. But Camera ON stream frames *did* arrive (one was 2 s old), so streaming works on the device. |
-| 0.1.14 (15) | **Shizuku renamed to GPT**, and GPT sees through the stream; details below. Tested end to end in the editor with the laptop webcam; not yet seen on the headset. |
+| 0.1.14 (15) | **Shizuku renamed to GPT**, and GPT sees through the stream; details below. **Bug (Henry, real Quest 3S):** Camera ON sends ONE black frame, then stops. The server's `FrameHub.sweep()` ends the stream after 5 s with no frames, which closes the camera on the Quest. GPT had nothing to see for the same reason. |
+| 0.1.15 (16) | Camera stream fix plus on-HUD diagnostics; details below. In the editor (laptop webcam) the stream ran **35 s continuously at 11.5 fps** (402 frames, no stops), watched like the iPad. **Verified on the headset: the iPad connects and gets live video.** **Bugs:** the iPad view was **upside down**, and VR strokes didn't fully show or line up on the iPad. |
+| 0.1.16 (17) | iPad view orientation and overlay fixes; details below. Editor: 11.1 fps with the VR stroke overlay complete (30/30 points); the View cycle works. **Verified on the headset: the iPad view is upright with the default (View 1/4, no flip).** **Bug:** the VR wearer's drawings came out as **dotted lines**. |
+| 0.1.17 (18) | Anti-dotting fix for VR ink; details below. Compiles; it depends on live headset input, so it's untested in the editor and not yet seen on the headset. |
+
+**0.1.17 anti-dotting (`LiveViewController.Update`, `Commit`):**
+- **Cause:** any one-frame dropout ended the stroke and started a new one-point stroke, which renders as a dot (`SpatialStrokeMesh` draws each stroke as one continuous tube). Dropouts came from the surface ray flickering at plane edges or mesh holes, pinch-strength or trigger wobble, hand-tracking loss, and the 512-point cap. Tracking loss used to *discard* the stroke outright.
+- **Now:**
+  - Losing the surface pauses the stroke for up to `SurfaceGrace` 0.35 s and resumes it if the ray comes back. The 25 cm jump split still prevents bridges.
+  - Releasing the pinch or trigger, or losing tracking, ends the stroke only after `ReleaseGrace` 0.12 s.
+  - The 512-point cap continues the stroke seamlessly from its last point.
+  - `Commit` drops strokes shorter than `MinStrokeLength` 8 mm, which are the stray dots.
+
+**0.1.16 iPad view fixes:**
+- **Orientation:**
+  - The Android encoder used to flip readback rows (`FlipReadbackRows=true`), and that is what made the image upside down.
+  - Now `LiveCameraSource.ViewMode` controls it: bit 0 flips the rows, bit 1 rotates 180° through `ExtraQuarter` in the orient shader. The default is mode 0, with no flip.
+  - The HUD **"View n/4"** button cycles the modes, and the choice is remembered in PlayerPrefs `alongside.viewMode`. If the default is still wrong on the headset (for example a mirror image), tap View until the iPad picture is upright. Strokes line up once the image is upright, because overlays and iPad strokes use the projection model, not the pixels.
+- **Field of view:** the estimated horizontal FOV is now **74°** (was 90°), closer to the Quest 3/3S passthrough camera. Too wide a guess squeezed the VR stroke overlays toward the centre and cut them off. It's set in `Awake` so a value serialized in the scene can't override it.
+- **Overlay detail:** up to 40 recent strokes (was 18), about 80 points each (was 32), up to 140 overlays (server max 150), with a 1400-point budget so the frame header stays under the encoder's 64 KB limit.
+
+**0.1.15 camera stream fix (`LiveCameraSource.cs`, `CameraJpegEncoder.cs`, `LiveViewController.cs`):**
+- **Supported resolution:** the Quest WebCamTexture used to ask for 960×720, which Meta's passthrough camera doesn't support. It now asks for 640×480 at 30 fps, then 1280×960 and 800×600.
+- **Stall watchdog:** if the camera produces no new frame for 3 s, it restarts with the next resolution, then the next `WebCamTexture.devices` entry (up to 12 tries).
+- **Frame pickup:** `TryFrame` used to need `didUpdateThisFrame` in the exact render frame the 12 fps timer fired, which most ticks missed on a 72–90 Hz headset. Now `LiveCameraSource.Update` counts camera updates every frame, any new frame since the last send is used, and the encoder only advances its timer when it actually takes a frame.
+- **Stuck readback:** an `AsyncGPUReadback` still busy after 2 s is reset (`Stalls++`) instead of blocking the stream forever.
+- **Pauses:** `OnApplicationPause` no longer stops the camera on a brief pause. On resume it calls `cameraSource.Resume()`; only 20 s or more in the background stops Camera ON.
+- **HUD diagnostics (`encoder.Status`):**
+  - Streaming: `Camera live: sent N (12 fps target), dropped D, stalls S | cam '<device>' got WxH (asked WxH) playing=… updates=U last=X.Xs ago try#T | devices: …`
+  - Not sending: `NOT SENDING: <same camera line> | <exact TryFrame reason>`.
+  - On the headset, read this line first if the stream stalls.
+- **Test recipe:**
+  - Run `npm start` in `server/`, and open a room as host: on the Quest, or in the editor with `AlongsideDebug.Create`.
+  - Turn on Camera ON, or call `LiveViewController.EnsureStreaming()`.
+  - Watch it like the iPad. A frame-counter script was used, equivalent to `examples/ipad-sim.mjs` but counting frames for 35 s.
 
 **0.1.14 details:**
 - **Wake word "GPT":** also accepts "Chat GPT", "G.P.T." and "gee pee tee"; tested against sample phrases. Labels are "GPT: on/off" and the persona is an anime-maid-styled helper. Internal names (`ShizukuCompanion`, `/shizuku`, `askShizuku`) were left unchanged.
@@ -114,6 +148,21 @@ Key runtime files:
 - **Wake word "GPT":** only utterances that start with it get an answer.
 - **Seeing:** the latest stream frame (up to 8 s old), plus its own snapshot when that works.
 - **Not yet confirmed on the headset:** that it sees (the editor and laptop tests pass). If it can't, the bubble says why for both the stream and the snapshot, and the server console logs one `[GPT]` line per question.
+
+**GPT can draw (server-only change, 2026-11-15; no new Quest build needed):**
+- "GPT, circle the …", "where is …? show me", "which one …": GPT circles that thing in **blue** (`#4A8FD8`; human ink is orange). It's a hand-drawn-style loop of 41 points.
+- **How it works:**
+  - If a stream frame is under 4 s old and spatial writing is ON, `shizuku.js` asks `SHIZUKU_MARK_MODEL` (default `gpt-4.1`, the most accurate pointer of gpt-4o, 4.1, 4.1-mini, 5-mini and 5 in a quick check) for JSON `{reply, mark: null | {u, v, radius}}` on that frame.
+  - The circle goes through `FrameHub.request` with a built-in actor (`GPT_ACTOR`, id `gpt-companion`). This is the same path MCP agents use.
+  - The headset reprojects the circle onto real surfaces (scene planes, or the 1.5 m fallback). It's stored as a spatial stroke with source `ai`, owner "GPT", so the iPad sees it in the stream overlay.
+  - `FrameHub.resolve` skips the MCP agent-token check for `actor.builtin`.
+- **Clearing:** "GPT, clear your drawings" removes only GPT's strokes, without calling the chat model.
+- **When it won't draw:** writing OFF, no fresh frame, or nothing to point at. It answers as before, using `SHIZUKU_MODEL`.
+- **Tested:**
+  - `tests/gpt-draw.test.js` (5 tests, mocked OpenAI); the full suite passes, 98/98.
+  - Real OpenAI calls with `npm run fake-quest`: "circle the orange box" landed on the box, and "show me the blue book" circled the book. "What do you see?" drew nothing, and "clear your drawings" cleared 2. About 3.5 s per question.
+- **Not yet tested on the Quest 3S.**
+- **Accuracy:** the vision model's pointing is approximate, so expect the circle near the object, not pixel-exact.
 
 The details below describe the original 0.1.11 design; the pipeline is unchanged apart from the rename and the seeing fixes.
 
@@ -181,7 +230,7 @@ The details below describe the original 0.1.11 design; the pipeline is unchanged
 ## 4. How to ship a new build (tested procedure)
 
 1. **Bump the version in PlayerSettings and confirm it stuck.**
-   - Set `bundleVersion` and `Android.bundleVersionCode`, which must be higher than the last upload (currently **15**). Then `AssetDatabase.SaveAssets()`.
+   - Set `bundleVersion` and `Android.bundleVersionCode`, which must be higher than the last upload (currently **18**). Then `AssetDatabase.SaveAssets()`.
    - Read the values back before building. One build silently reverted to the old version (see Gotchas).
 2. **Set up release signing.** Unity forgets keystore passwords after a restart.
    - Set `PlayerSettings.Android.useCustomKeystore = true`.

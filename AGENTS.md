@@ -5,7 +5,7 @@ Read [HANDOFF.md](HANDOFF.md) first. It has the project state, the tested build-
 Hard rules:
 - **Never commit** the Android keystore, its password file, APKs, `.env`, or `server/data/`. They're git-ignored; keep it that way.
 - **Never hard-code the keystore password** in scripts. Read it at build time from the private file outside the repo (see HANDOFF §4).
-- **Bump `bundleVersionCode`** above the last uploaded build (currently 15) for every upload. Verify the APK with `aapt2` and `apksigner` before uploading.
+- **Bump `bundleVersionCode`** above the last uploaded build (currently 18) for every upload. Verify the APK with `aapt2` and `apksigner` before uploading.
 - **Don't run `AlongsideSetup.BuildScene`** or the `Alongside/LiveView` menu items 3 and 5. They reset scene fields.
 - **Keep the OpenXR "Composition Layers" feature enabled.** Without it, passthrough renders black.
 - **The build scene is `unity/Assets/Scenes/Alongside.unity`**, not `Main.unity`.

@@ -357,7 +357,8 @@ export class FrameHub {
     if (!p) throw new Fault("Unknown reprojection", 404);
     if (msg.revision !== p.revision) return;
     spatialAllowed(this.store, ws.room, p.actor);
-    if (p.actor.kind === "ai") {
+    // Built-in GPT companion (server-side, see shizuku.js) has no MCP agent token to check.
+    if (p.actor.kind === "ai" && !p.actor.builtin) {
       const agent = this.store.room(ws.room).agents[p.actor.id];
       if (!agent?.active || agent.expires < Date.now())
         throw new Fault("Agent revoked", 403);
