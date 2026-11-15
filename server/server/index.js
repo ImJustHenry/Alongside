@@ -13,6 +13,15 @@ import { AIManager } from "./ai.js";
 import { FrameHub, LIMITS } from "./liveview.js";
 import { askFrame } from "./liveview-ai.js";
 import { askShizuku } from "./shizuku.js";
+import QRCode from "qrcode";
+import {
+  network,
+  refreshLan,
+  allUrls,
+  appLink,
+  advertise,
+  startTunnel,
+} from "./discovery.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export async function createApp({
@@ -317,6 +326,55 @@ export async function createApp({
   app.all("/mcp/:room", (req, res) =>
     res.status(405).json({ error: "Stateless Streamable HTTP: use POST." }),
   );
+  // How to reach this server (LAN + optional public tunnel). Lets the iPad app keep a
+  // fallback list and switch to the public address when it isn't on the local network.
+  app.get(
+    "/api/discover",
+    wrap((req, res) => {
+      limit(req, "discover", 60);
+      res.json({ app: "Alongside", lan: network.lan, public: network.public });
+    }),
+  );
+  // Connect page for the laptop's own screen: QR codes that open the iPad app already
+  // pointed at this server and paired. Only for requests made on this computer (not
+  // through the tunnel, which also arrives from 127.0.0.1 but with another Host).
+  app.get("/connect", async (req, res) => {
+    const host = (req.headers.host || "").split(":")[0];
+    const local =
+      ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(
+        req.socket.remoteAddress,
+      ) &&
+      ["localhost", "127.0.0.1"].includes(host) &&
+      !req.headers["x-forwarded-for"] &&
+      !req.headers["cf-connecting-ip"];
+    if (!local)
+      return res
+        .status(403)
+        .send("Open /connect on the server computer itself.");
+    const esc = (t) =>
+      String(t).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+    const qr = (text) => QRCode.toString(text, { type: "svg", margin: 1 });
+    const nearby = appLink(pairCode);
+    const remote = network.public ? appLink(pairCode, [network.public]) : null;
+    res.type("html").send(`<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect an iPad</title>
+<style>body{font:16px system-ui,sans-serif;background:#f1eee6;color:#1f3a33;margin:0;padding:24px}
+main{max-width:980px;margin:auto}h1{font-size:28px}.grid{display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card{background:#fff;border-radius:16px;padding:20px}.card svg{width:100%;height:auto}code{word-break:break-all;font-size:13px}
+.code{font-size:32px;letter-spacing:4px;font-weight:700}</style>
+<main><h1>Connect an iPad to Alongside</h1>
+<p>Pairing code <span class="code">${esc(pairCode)}</span></p>
+<div class="grid">
+<div class="card"><h2>Nearby iPad</h2><p>Scan with the iPad's Camera to open Alongside Live, connected and paired.</p>${await qr(nearby)}
+<p>Servers: ${network.lan.map((u) => `<code>${esc(u)}</code>`).join(" ")}</p></div>
+<div class="card"><h2>Far away</h2>${
+      remote
+        ? `<p>Send this link to the remote person (privately: it contains the pairing code). Tapping it opens Alongside Live.</p>${await qr(remote)}<p><code>${esc(remote)}</code></p>
+<p>No app? They can open <code>${esc(network.public)}/ipad</code> in Safari or any browser.</p>`
+        : `<p>Not enabled. Start the server with <code>npm run start:remote</code> (needs <code>cloudflared</code>) to get a public HTTPS address.</p>`
+    }</div></div></main>`);
+  });
   let vite;
   if (dev) {
     const { createServer } = await import("vite");
@@ -333,14 +391,16 @@ export async function createApp({
       const path = resolve(root, "dist/index.html");
       if (!existsSync(path))
         return res.status(503).send("Run npm run build, then npm start.");
-      res.type("html").send(
-        readFileSync(path, "utf8")
-          .replace("/manifest.webmanifest", "/ipad.webmanifest")
-          .replace(
-            'name="apple-mobile-web-app-title" content="Alongside"',
-            'name="apple-mobile-web-app-title" content="Alongside Live"',
-          ),
-      );
+      res
+        .type("html")
+        .send(
+          readFileSync(path, "utf8")
+            .replace("/manifest.webmanifest", "/ipad.webmanifest")
+            .replace(
+              'name="apple-mobile-web-app-title" content="Alongside"',
+              'name="apple-mobile-web-app-title" content="Alongside Live"',
+            ),
+        );
     });
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api/"))
@@ -531,23 +591,79 @@ export async function createApp({
     await vite?.close();
     await new Promise((done) => server.close(done));
   };
-  return { app, server, store, ai, hub, pairCode, close };
+  // Lets a public tunnel address through the host/origin checks once it is known.
+  const allowOrigin = (url) => {
+    const origin = new URL(url).origin;
+    if (!configured.includes(origin)) configured.push(origin);
+  };
+  return { app, server, store, ai, hub, pairCode, allowOrigin, close };
 }
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  const { server, close, pairCode } = await createApp({
+  const { server, close, pairCode, allowOrigin } = await createApp({
     dev: process.argv.includes("--dev"),
   });
   const port = Number(process.env.PORT || 4173);
-  server.listen(port, "0.0.0.0", () =>
+  const warn = (what) => (e) =>
+    console.warn(`[Alongside] ${what}: ${e?.message || e}`);
+  const printLinks = async () => {
+    const link = appLink(pairCode);
     console.log(
-      `Alongside is ready on ${process.env.HTTPS_CERT ? "https" : "http"}://localhost:${port}. Use PUBLIC_ORIGIN for an HTTPS deployment.\n[Alongside] iPad app: open http://<this-PC-IP>:${port}/ipad, pairing code ${pairCode}`,
-    ),
-  );
+      `\n[Alongside] Pairing code ${pairCode}\n` +
+        `[Alongside] Servers: ${allUrls().join("  ") || "(no network)"}\n` +
+        `[Alongside] iPad app link (contains the pairing code, share privately):\n  ${link}\n` +
+        `[Alongside] QR codes for iPads: open http://localhost:${port}/connect on this computer.`,
+    );
+    if (network.public)
+      console.log(
+        `[Alongside] Far-away people: ${network.public}/ipad (browser) or the app link above.`,
+      );
+    console.log(await QRCode.toString(link, { type: "terminal", small: true }));
+  };
+  let ad = { refresh() {}, stop() {} },
+    tunnel = { stop() {} };
+  server.listen(port, "0.0.0.0", async () => {
+    console.log(
+      `Alongside is ready on ${process.env.HTTPS_CERT ? "https" : "http"}://localhost:${port}. Use PUBLIC_ORIGIN for an HTTPS deployment.`,
+    );
+    refreshLan(port);
+    if (process.env.NO_MDNS !== "1")
+      ad = await advertise({ port, onError: warn("Bonjour") });
+    // Network changes (e.g. turning the hotspot on) update the advertised addresses.
+    const lanTimer = setInterval(() => {
+      const before = network.lan.join();
+      if (refreshLan(port).join() !== before) {
+        ad.refresh();
+        console.log(
+          `[Alongside] Network changed. Servers: ${allUrls().join("  ")}`,
+        );
+      }
+    }, 15000);
+    lanTimer.unref();
+    if (process.argv.includes("--tunnel") || process.env.TUNNEL === "1") {
+      console.log("[Alongside] Starting public tunnel (cloudflared)...");
+      tunnel = startTunnel({
+        port,
+        onUrl: async (url) => {
+          network.public = url;
+          allowOrigin(url);
+          ad.refresh();
+          console.log(`[Alongside] Public address: ${url}`);
+          await printLinks();
+        },
+        onError: warn(
+          "Tunnel unavailable (install cloudflared: winget install Cloudflare.cloudflared)",
+        ),
+      });
+    }
+    await printLinks();
+  });
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, async () => {
+      tunnel.stop();
+      ad.stop();
       await close();
       process.exit(0);
     });

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The Alongside server runs on plain HTTP on the local network (e.g. http://192.168.137.1:4173). -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Finds the Alongside server automatically (the server advertises _alongside._tcp). -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_alongside._tcp</string>
+	</array>
+	<!-- alongside-live://connect?server=...&pair=... opens the app connected and paired
+	     (the server prints this link and shows it as a QR at http://localhost:4173/connect). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>edu.slu.stanfordxr.alongside.ipad</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>alongside-live</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Alongside Live connects to the Alongside server on your local network to show the Quest wearer's view.</string>
+</dict>
+</plist>

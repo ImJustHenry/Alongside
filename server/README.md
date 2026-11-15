@@ -102,6 +102,25 @@ Reload keeps the tab's membership. Closing the tab or clearing browser storage m
 
 Hand input is requested as an optional WebXR feature, but no dedicated hand-model rendering or custom gesture recognizer is included. Controllers are the intended first-demo input. Headset placement, permissions, rendering, ray interactions, and frame rate must be tested on the real device before judging.
 
+## Connecting iPads, nearby or far away
+
+When the server starts it prints the pairing code, its addresses, an `alongside-live://` app link and a QR code. The native iPad app ([`../ipad`](../ipad)) finds the server in three ways:
+
+- **Automatically on the same network.** The server announces itself over Bonjour (`_alongside._tcp`). Turn this off with `NO_MDNS=1`. The app also remembers every address that has worked.
+- **QR code.** On the server computer, open `http://localhost:4173/connect` and scan it with the iPad's Camera. The app opens connected and paired. This page only opens on the server computer itself, because it shows the pairing code.
+- **Far away.** Run `npm run start:remote` instead of `npm start`. It also starts a free Cloudflare quick tunnel and gets a public `https://….trycloudflare.com` address, which it allows automatically and announces to the app.
+  - Install `cloudflared` first. Windows: `winget install Cloudflare.cloudflared`. macOS: `brew install cloudflared`.
+  - Send the remote person the "Far away" link from `/connect`. It contains the pairing code, so send it privately.
+  - Without the app, they can open `https://….trycloudflare.com/ipad` in any browser.
+  - An iPad that has connected once nearby already knows the public address, and switches to it by itself when the local network can't reach the server.
+
+Everyone uses the same server and the same room, so drawings and the Quest camera stay in sync wherever people are. The Quest itself stays on the local network.
+
+Limits:
+- The tunnel address changes every time it restarts, so send a fresh link.
+- Video over the internet is slower than on the local network.
+- Anyone with the public address still needs the pairing code or an invite.
+
 ## AI modes and honest attribution
 
 ### 1. Scripted practice guide — works immediately

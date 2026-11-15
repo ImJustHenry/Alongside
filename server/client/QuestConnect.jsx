@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { nativeApp } from "./LiveView.jsx";
 
 // iPad home-screen app (/ipad): pair once with the server's 6-digit code, then
 // automatically join whatever room the Quest headset is currently hosting.
@@ -61,7 +62,9 @@ export default function QuestConnect({ onJoin, brand }) {
             "Waiting for the Quest… open Alongside LiveView in the headset.",
         );
       } catch {
-        setStatus("Can't reach the Alongside server. Is the iPad on the same Wi-Fi?");
+        setStatus(
+          "Can't reach the Alongside server. Is the iPad on the same Wi-Fi?",
+        );
       } finally {
         busy.current = false;
       }
@@ -75,75 +78,102 @@ export default function QuestConnect({ onJoin, brand }) {
   }, [code]);
 
   return (
-    <div className="landing quest-connect">
-      <header>{brand}</header>
-      <main className="landing-main">
-        <section className="welcome-card">
-          <span className="eyebrow">ALONGSIDE LIVEVIEW · IPAD</span>
-          <h2>{code ? "Connecting to the Quest" : "Pair this iPad"}</h2>
-          {code ? (
-            <>
-              <p className="connect-status" aria-live="polite">
-                <span className="dot" /> {status || "Looking for the Quest…"}
-              </p>
-              <button
-                className="secondary wide"
-                onClick={() => {
-                  write("alongside-pair", "");
-                  setDraft("");
-                  setCode("");
-                  setStatus("");
-                }}
-              >
-                Change pairing code
-              </button>
-            </>
-          ) : (
-            <>
-              <label>
-                Your name
-                <input
-                  value={name}
-                  maxLength={48}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    write("alongside-name", e.target.value.trim());
-                  }}
-                />
-              </label>
-              <label>
-                Pairing code (shown in the server window)
-                <input
-                  inputMode="numeric"
-                  pattern="\d{6}"
-                  maxLength={6}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
-                  placeholder="6 digits"
-                />
-              </label>
-              <button
-                className="primary wide"
-                disabled={!/^\d{6}$/.test(draft)}
-                onClick={() => {
-                  setError("");
-                  setCode(draft);
-                }}
-              >
-                Pair <span>↗</span>
-              </button>
-            </>
-          )}
-          <p className="fine">
-            You only pair once. After that, opening this app always joins the
-            room the Quest is hosting, even after the headset app restarts.
-          </p>
-          {error && (
-            <p role="alert" className="error">
-              {error}
+    <div className="qc">
+      <main className="qc-card">
+        <div className="qc-brand">{brand}</div>
+        {code ? (
+          <>
+            <div className="qc-radar" aria-hidden="true">
+              <span />
+              <span />
+              <i />
+            </div>
+            <h1>Connecting to the Quest</h1>
+            <p className="qc-status" aria-live="polite">
+              {status || "Looking for the Quest…"}
             </p>
-          )}
-        </section>
+            <button
+              className="qc-link"
+              onClick={() => {
+                write("alongside-pair", "");
+                setDraft("");
+                setCode("");
+                setStatus("");
+              }}
+            >
+              Use a different pairing code
+            </button>
+          </>
+        ) : (
+          <>
+            <h1>Pair this iPad</h1>
+            <p className="qc-sub">
+              See what the Quest wearer sees, and draw straight into their
+              space.
+            </p>
+            <label className="qc-field">
+              <span>Your name</span>
+              <input
+                value={name}
+                maxLength={48}
+                autoComplete="name"
+                onChange={(e) => {
+                  setName(e.target.value);
+                  write("alongside-name", e.target.value.trim());
+                }}
+              />
+            </label>
+            <label className="qc-field">
+              <span>Pairing code</span>
+              <input
+                className="qc-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="\d{6}"
+                maxLength={6}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && /^\d{6}$/.test(draft)) {
+                    setError("");
+                    setCode(draft);
+                  }
+                }}
+                placeholder="••••••"
+              />
+            </label>
+            <p className="qc-hint">
+              The 6-digit code is shown in the server window.
+            </p>
+            <button
+              className="qc-primary"
+              disabled={!/^\d{6}$/.test(draft)}
+              onClick={() => {
+                setError("");
+                setCode(draft);
+              }}
+            >
+              Pair
+            </button>
+          </>
+        )}
+        {nativeApp() && (
+          <button
+            className="qc-link"
+            onClick={() => nativeApp().postMessage({ action: "server" })}
+          >
+            Change server
+          </button>
+        )}
+        {error && (
+          <p role="alert" className="qc-error">
+            {error}
+          </p>
+        )}
+        <p className="qc-fine">
+          You only pair once. After that, opening this app joins the room the
+          Quest is hosting, even after the headset app restarts.
+        </p>
       </main>
     </div>
   );
