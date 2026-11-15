@@ -17,6 +17,7 @@ public class SurfaceInk : MonoBehaviour {
   if (Ready) return;
   templates = new GameObject("Surface templates").transform; templates.gameObject.SetActive(false); templates.SetParent(transform, false);
   // Planes: the visualizer fills the MeshCollider; no renderer, so they stay invisible over passthrough.
+  // Colliders only, no renderers: invisible over passthrough and no transparent overdraw cost.
   var plane = Template("Surface plane"); plane.AddComponent<ARPlane>(); plane.AddComponent<MeshFilter>(); plane.AddComponent<MeshCollider>(); plane.AddComponent<ARPlaneMeshVisualizer>();
   planes = planeManager; planes.enabled = false; planes.planePrefab = plane; planes.enabled = true;
   // Room mesh: covers chairs, monitors, anything Space Setup scanned. Must live on a child of the XR Origin.
@@ -39,9 +40,10 @@ public class SurfaceInk : MonoBehaviour {
  GameObject Template(string name) { var go = new GameObject(name); go.layer = Layer; go.transform.SetParent(templates, false); return go; }
 
  // Hit a real surface along the ray. Point is lifted slightly off the surface so ink doesn't z-fight.
- public bool Raycast(Ray ray, out Vector3 point, out Vector3 normal) {
+ public bool Raycast(Ray ray, out Vector3 point, out Vector3 normal) => Raycast(ray, MaxDistance, out point, out normal);
+ public bool Raycast(Ray ray, float maxDistance, out Vector3 point, out Vector3 normal) {
   point = default; normal = Vector3.up;
-  if (!Ready || !Physics.Raycast(ray, out var hit, MaxDistance, 1 << Layer, QueryTriggerInteraction.Ignore)) return false;
+  if (!Ready || !Physics.Raycast(ray, out var hit, maxDistance, 1 << Layer, QueryTriggerInteraction.Ignore)) return false;
   // The board and its buttons (default layers) win if they're in front of the real surface.
   if (Physics.Raycast(ray, out var ui, hit.distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) return false;
   normal = Vector3.Dot(hit.normal, ray.direction) > 0 ? -hit.normal : hit.normal; point = hit.point + normal * Lift; return true;
@@ -52,7 +54,14 @@ public class SurfaceInk : MonoBehaviour {
   reticle.transform.SetPositionAndRotation(point, Quaternion.FromToRotation(Vector3.up, normal));
  }
 
- public int Count => (planes ? planes.trackables.count : 0) + (meshes && meshes.meshes != null ? meshes.meshes.Count : 0) + (boxes ? boxes.trackables.count : 0);
+ // One-line on-headset diagnostics (no logcat on this device).
+ public string Diagnostics() {
+  if (!Ready) return Status;
+  int p = planes ? planes.trackables.count : -1, m = meshes && meshes.meshes != null ? meshes.meshes.Count : -1, b = boxes ? boxes.trackables.count : -1;
+  string sub(UnityEngine.ISubsystem s) => s == null ? "none" : s.running ? "on" : "off";
+  return "Surfaces: planes " + p + " (" + sub(planes ? planes.subsystem : null) + "), mesh " + m + " (" + sub(meshes ? meshes.subsystem : null) + "), boxes " + b + " (" + sub(boxes ? boxes.subsystem : null) + "), session " + ARSession.state;
+ }
+ public int Count =>(planes ? planes.trackables.count : 0) + (meshes && meshes.meshes != null ? meshes.meshes.Count : 0) + (boxes ? boxes.trackables.count : 0);
  void OnDestroy() { if (reticle) Destroy(reticle); }
 }
 

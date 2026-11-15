@@ -12,6 +12,7 @@ import { mcpServer } from "./tools.js";
 import { AIManager } from "./ai.js";
 import { FrameHub, LIMITS } from "./liveview.js";
 import { askFrame } from "./liveview-ai.js";
+import { askShizuku } from "./shizuku.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export async function createApp({
@@ -271,6 +272,13 @@ export async function createApp({
       res.json(
         await askFrame(hub, ai, store, req.params.room, human(req), req.body),
       );
+    }),
+  );
+  app.post(
+    "/api/rooms/:room/shizuku",
+    wrap(async (req, res) => {
+      limit(req, "shizuku", 20);
+      res.json(await askShizuku(hub, store, req.params.room, human(req), req.body));
     }),
   );
   app.post(

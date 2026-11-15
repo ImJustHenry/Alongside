@@ -16,6 +16,8 @@ public partial class ServerSession {
  public void SpatialAction(string type,SpatialStroke stroke=null,string id=null){if(!State.collaborativeWriting){Fail("Spatial writing is OFF for everyone.");return;}var a=new Dict{{"type",type}};if(stroke!=null){try{LiveMath.Validate(stroke);}catch(Exception e){Fail(e.Message);return;}a["stroke"]=stroke.Wire();}if(id!=null)a["id"]=id;Post(a);}
  // No unbounded queue of frames: drop if an earlier send currently owns the socket.
  public async Task<bool> SendCameraFrame(byte[] packet){var socket=ws;if(!connected||socket==null||!await sendLock.WaitAsync(0))return false;try{if(socket.State!=WebSocketState.Open)return false;await socket.SendAsync(new ArraySegment<byte>(packet),WebSocketMessageType.Binary,true,cts.Token);return true;}catch{return false;}finally{sendLock.Release();}}
+ // Shizuku voice companion: base64 16 kHz mono WAV in; {heard, addressed, reply, audio(base64 WAV), sawCamera} out.
+ public void AskShizuku(string wavBase64,string jpegBase64,Action<Dict> ok,Action<string> fail){var body=new Dict{{"audio",wavBase64},{"consent",true}};if(!string.IsNullOrEmpty(jpegBase64))body["image"]=jpegBase64;runner.StartCoroutine(Http("POST",Room("/shizuku"),body,d=>ok?.Invoke(d as Dict),fail));}
  public void AskLiveFrame(string question,Action<string> done){runner.StartCoroutine(Http("POST",Room("/liveview/ask"),new Dict{{"prompt",question},{"consent",true}},d=>{var obj=d as Dict;done?.Invoke(obj!=null&&obj.TryGetValue("text",out var t)?t.ToString():"Request complete");},done));}
 }
 }
