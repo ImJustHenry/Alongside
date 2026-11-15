@@ -720,6 +720,31 @@ export default function App() {
     canWrite = host || collaborativeWriting,
     progress = state.objects.filter(placed).length,
     lastGuidance = state.messages.filter((m) => m.source === "ai").at(-1)?.text;
+  // iPad app: the live view is the whole app (full-screen camera, floating tools).
+  if (IPAD && view === "live")
+    return (
+      <div className="ipad-app">
+        <LiveView
+          immersive
+          session={session}
+          state={state}
+          api={api}
+          onError={setError}
+          peers={peers}
+          onLeave={leave}
+          onOpenWorkspace={() => setView("board")}
+        />
+        {error && (
+          <div className="lv-error" role="alert">
+            {error}
+            <button onClick={() => setError("")} aria-label="Dismiss error">
+              ×
+            </button>
+          </div>
+        )}
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
   return (
     <div className="workspace">
       <aside className="left-rail">

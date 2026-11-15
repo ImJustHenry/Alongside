@@ -406,6 +406,7 @@ export class FrameHub {
       id: msg.requestId,
       strokeId: stroke.id,
       placement: stroke.placement,
+      anchorId: stroke.anchorId,
     });
   }
   control(ws, msg) {

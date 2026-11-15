@@ -54,7 +54,63 @@ async function decode(jpeg) {
     image.src = url;
   });
 }
-export default function LiveView({ session, state, api, onError }) {
+const SWATCHES = [
+  "#da6b45",
+  "#e0457b",
+  "#f2c94c",
+  "#3fbf7f",
+  "#2f7de1",
+  "#ffffff",
+];
+const WIDTHS = [
+  [0.003, "Fine", 6],
+  [0.006, "Medium", 10],
+  [0.012, "Bold", 16],
+];
+const ICONS = {
+  undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6",
+  tag: "M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
+  close: "M18 6 6 18M6 6l12 12",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  exit: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3",
+  server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
+};
+/** The native iPad app (Alongside Live) exposes a message bridge; absent in browsers. */
+export const nativeApp = () => window.webkit?.messageHandlers?.alongside;
+const Icon = ({ d, size = 22 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={d === ICONS.more ? 3 : 1.8}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d={d} />
+  </svg>
+);
+/** Friendly name for where a stroke was pinned (simulated anchors are named; real Quest anchors are IDs). */
+const surfaceName = (anchorId) => {
+  const m = /^sim-(.+)$/.exec(anchorId || "");
+  if (!m) return "a real surface";
+  const name = m[1].replace(/^(back|front|left|right)-wall$/, "wall");
+  return "the " + name;
+};
+export default function LiveView({
+  session,
+  state,
+  api,
+  onError,
+  immersive = false,
+  peers = [],
+  onLeave,
+  onOpenWorkspace,
+}) {
   const [status, setStatus] = useState({ live: false }),
     [connected, setConnected] = useState(false),
     [color, setColor] = useState("#da6b45"),
@@ -73,7 +129,9 @@ export default function LiveView({ session, state, api, onError }) {
     [mode, setMode] = useState("live"),
     [recording, setRecording] = useState(false),
     [recorded, setRecorded] = useState(0),
-    [fullscreen, setFullscreen] = useState(false);
+    [fullscreen, setFullscreen] = useState(false),
+    [sheet, setSheet] = useState(false),
+    [toastOn, setToastOn] = useState(false);
   const canvas = useRef(),
     container = useRef(),
     ws = useRef(),
@@ -90,7 +148,16 @@ export default function LiveView({ session, state, api, onError }) {
     animation = useRef(),
     paintRef = useRef(() => {}),
     clock = useRef();
-  latest.current = { state, color, width, labels, mode, recording, status };
+  latest.current = {
+    state,
+    color,
+    width,
+    labels,
+    mode,
+    recording,
+    status,
+    immersive,
+  };
   const send = (m) => {
     if (ws.current?.readyState === WebSocket.OPEN)
       ws.current.send(JSON.stringify(m));
@@ -115,9 +182,10 @@ export default function LiveView({ session, state, api, onError }) {
     }
     const ctx = c.getContext("2d");
     ctx.setTransform(d, 0, 0, d, 0, 0);
-    ctx.fillStyle = "#152923";
+    ctx.fillStyle = latest.current.immersive ? "#0b0f0e" : "#152923";
     ctx.fillRect(0, 0, r.width, r.height);
     const current = stroke.current?.frame || frame.current;
+    if (!current && latest.current.immersive) return; // the lock card explains the state
     if (!current) {
       ctx.fillStyle = "#9aafa3";
       ctx.font = "15px sans-serif";
@@ -180,11 +248,14 @@ export default function LiveView({ session, state, api, onError }) {
     ctx.restore();
     ctx.textAlign = "left";
     if (current.meta.source === "simulation") {
+      // Immersive layout: tag the image's bottom-left corner so floating bars don't hide it.
+      const x = latest.current.immersive ? box.x + 12 : 10,
+        y = latest.current.immersive ? box.y + box.h - 40 : 10;
       ctx.fillStyle = "#f9d378";
-      ctx.fillRect(10, 10, 230, 28);
+      ctx.fillRect(x, y, 230, 28);
       ctx.fillStyle = "#17261f";
       ctx.font = "bold 12px sans-serif";
-      ctx.fillText("SIMULATED SOURCE — NOT CAMERA", 18, 29);
+      ctx.fillText("SIMULATED SOURCE — NOT CAMERA", x + 8, y + 19);
     }
   }
   paintRef.current = render;
@@ -328,9 +399,13 @@ export default function LiveView({ session, state, api, onError }) {
         } else if (m.type === "remoteResult") {
           setNotice(
             m.error ||
-              (m.placement === "fixed-distance"
-                ? "Stroke saved. Approximate 1.5 m fallback — NOT anchored to a detected real surface."
-                : "Stroke saved. Projected onto a scene plane; verify physical alignment."),
+              (latest.current.immersive
+                ? m.placement === "fixed-distance"
+                  ? "Placed 1.5 m in front of the wearer — no surface found there"
+                  : `Pinned to ${surfaceName(m.anchorId)} in the wearer's space`
+                : m.placement === "fixed-distance"
+                  ? "Stroke saved. Approximate 1.5 m fallback — NOT anchored to a detected real surface."
+                  : "Stroke saved. Projected onto a scene plane; verify physical alignment."),
           );
         } else if (m.type === "error") {
           setNotice(m.error);
@@ -366,6 +441,13 @@ export default function LiveView({ session, state, api, onError }) {
       clearFrame();
     };
   }, [session.roomId, session.token]);
+  // Immersive layout: notices show briefly as a toast.
+  useEffect(() => {
+    if (!immersive || !notice) return;
+    setToastOn(true);
+    const t = setTimeout(() => setToastOn(false), 3800);
+    return () => clearTimeout(t);
+  }, [notice, immersive]);
   useEffect(() => {
     if (state.collaborativeWriting === false) cancelStroke();
     paintRef.current();
@@ -435,7 +517,11 @@ export default function LiveView({ session, state, api, onError }) {
     sendStroke("commit");
     stroke.current = null;
     if (s.frame.bitmap !== frame.current?.bitmap) s.frame.bitmap.close?.();
-    setNotice("Sent. Waiting for headset reprojection…");
+    setNotice(
+      immersive
+        ? "Placing your stroke in the wearer's space…"
+        : "Sent. Waiting for headset reprojection…",
+    );
     paintRef.current();
   }
   async function ask() {
@@ -501,6 +587,355 @@ export default function LiveView({ session, state, api, onError }) {
     } catch (e) {
       onError(e.message);
     }
+  }
+  const action = (body) =>
+    api(`/rooms/${session.roomId}/actions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).catch((e) => onError(e.message));
+  if (immersive) {
+    const lock =
+      mode === "replay"
+        ? null
+        : !connected
+          ? ["Connecting…", "Reaching the Alongside server."]
+          : state.collaborativeWriting === false
+            ? [
+                "Drawing paused",
+                "The host turned spatial writing off for everyone.",
+              ]
+            : !status.live
+              ? [
+                  "Waiting for the Quest camera",
+                  "Ask the wearer to pinch Camera ON above the board.",
+                ]
+              : null;
+    const hostName =
+      (state.members || []).find((m) => m.role === "host")?.name || "Quest";
+    const online = peers.length ? peers : [session.member];
+    return (
+      <section className="lv" ref={container}>
+        <div className="lv-stage">
+          <canvas
+            data-testid="live-canvas"
+            ref={canvas}
+            onPointerDown={begin}
+            onPointerMove={move}
+            onPointerUp={end}
+            onPointerCancel={cancelStroke}
+          />
+          {lock && (
+            <div className="lv-lock">
+              <div className="lv-glass lv-lock-card">
+                {lock[0] !== "Drawing paused" && (
+                  <span className="lv-spinner" />
+                )}
+                <strong>{lock[0]}</strong>
+                <span>{lock[1]}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <header className="lv-top">
+          <div className="lv-glass lv-title">
+            <span
+              className={
+                "lv-pill " +
+                (mode === "replay" ? "replay" : status.live ? "live" : "off")
+              }
+            >
+              <i />
+              {mode === "replay" ? "Replay" : status.live ? "Live" : "Offline"}
+            </span>
+            <div>
+              <strong>{hostName}</strong>
+              <small>
+                Room {state.id}
+                {status.live && mode === "live"
+                  ? ` · ${metrics.fps} fps · ${metrics.age < 0 ? "clock skew" : metrics.age + " ms"}`
+                  : ""}
+              </small>
+            </div>
+          </div>
+          <div className="lv-glass lv-actions">
+            <div
+              className="lv-avatars"
+              aria-label={online.length + " people in the room"}
+            >
+              {online.slice(0, 4).map((p) => (
+                <span key={p.id} title={p.name} style={{ background: p.color }}>
+                  {(p.name || "?").slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+            </div>
+            <button
+              className={"lv-icon " + (labels ? "on" : "")}
+              aria-label="Author labels"
+              aria-pressed={labels}
+              onClick={() => setLabels(!labels)}
+            >
+              <Icon d={ICONS.tag} />
+            </button>
+            <button
+              className="lv-icon"
+              aria-label="Session menu"
+              onClick={() => setSheet(true)}
+            >
+              <Icon d={ICONS.more} />
+            </button>
+          </div>
+        </header>
+
+        <div
+          className={"lv-toast lv-glass " + (toastOn ? "show" : "")}
+          role="status"
+        >
+          {notice}
+        </div>
+
+        <footer className="lv-dock lv-glass" aria-label="Drawing tools">
+          <div className="lv-swatches">
+            {SWATCHES.map((c) => (
+              <button
+                key={c}
+                aria-label={"Ink " + c}
+                aria-pressed={color === c}
+                className={color === c ? "on" : ""}
+                style={{ "--c": c }}
+                onClick={() => setColor(c)}
+              />
+            ))}
+            <label
+              className={"lv-custom " + (SWATCHES.includes(color) ? "" : "on")}
+              style={{ "--c": color }}
+              title="Custom color"
+            >
+              <input
+                aria-label="Live ink color"
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+              />
+            </label>
+          </div>
+          <span className="lv-sep" />
+          <div className="lv-widths">
+            {WIDTHS.map(([w, label, px]) => (
+              <button
+                key={w}
+                aria-label={label + " stroke"}
+                aria-pressed={width === w}
+                className={width === w ? "on" : ""}
+                onClick={() => setWidth(w)}
+              >
+                <i style={{ width: px, height: px, background: color }} />
+              </button>
+            ))}
+          </div>
+          <span className="lv-sep" />
+          <button
+            className="lv-icon"
+            aria-label="Undo my spatial stroke"
+            disabled={!canDraw}
+            onClick={() => action({ type: "spatial.undo" })}
+          >
+            <Icon d={ICONS.undo} />
+          </button>
+          <button
+            className="lv-icon"
+            aria-label="Clear my strokes"
+            disabled={!canDraw}
+            onClick={() =>
+              confirm("Remove all of your strokes from the wearer's space?") &&
+              action({ type: "spatial.clearMine" })
+            }
+          >
+            <Icon d={ICONS.trash} />
+          </button>
+        </footer>
+
+        <div
+          className={"lv-scrim " + (sheet ? "open" : "")}
+          onClick={() => setSheet(false)}
+        />
+        <aside
+          className={"lv-sheet " + (sheet ? "open" : "")}
+          aria-hidden={!sheet}
+          aria-label="Session"
+        >
+          <div className="lv-sheet-head">
+            <h3>Session</h3>
+            <button
+              className="lv-icon"
+              aria-label="Close"
+              onClick={() => setSheet(false)}
+            >
+              <Icon d={ICONS.close} />
+            </button>
+          </div>
+
+          <h4>In the room</h4>
+          {online.map((p) => (
+            <div className="lv-person" key={p.id}>
+              <span className="lv-avatar" style={{ background: p.color }}>
+                {(p.name || "?").slice(0, 1).toUpperCase()}
+              </span>
+              <span>
+                {p.name}
+                {p.id === session.member.id && <small> · you</small>}
+              </span>
+            </div>
+          ))}
+
+          {host && (
+            <>
+              <h4>Host controls</h4>
+              <label className="lv-row">
+                <span>Spatial writing</span>
+                <input
+                  className="lv-switch"
+                  aria-label="Spatial writing"
+                  type="checkbox"
+                  checked={state.collaborativeWriting !== false}
+                  onChange={(e) =>
+                    action({
+                      type: "collaborativeWriting",
+                      value: e.target.checked,
+                    })
+                  }
+                />
+              </label>
+              <div className="lv-buttons">
+                <button
+                  className="lv-btn"
+                  onClick={() =>
+                    action({ type: "aiEnabled", value: !state.aiEnabled })
+                  }
+                >
+                  {state.aiEnabled ? "Pause AI" : "Resume AI"}
+                </button>
+                <button
+                  className="lv-btn danger"
+                  onClick={() =>
+                    api(`/rooms/${session.roomId}/liveview/stop`, {
+                      method: "POST",
+                      body: "{}",
+                    }).catch((e) => onError(e.message))
+                  }
+                >
+                  Stop camera
+                </button>
+              </div>
+            </>
+          )}
+
+          <h4>Ask AI about this view</h4>
+          <textarea
+            aria-label="Question about live frame"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            maxLength={1600}
+          />
+          <label className="lv-check">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+            />
+            Send this frame and question to my configured AI provider
+          </label>
+          <button
+            className="lv-btn primary"
+            disabled={asking || !consent || !status.live || mode !== "live"}
+            onClick={ask}
+          >
+            {asking ? "Asking…" : "Ask AI"}
+          </button>
+          {answer && <p className="lv-answer">{answer}</p>}
+
+          <h4>Approved replay</h4>
+          <p className="lv-fine">
+            The Quest host must press “Allow capture” before a clip can be
+            recorded. Frames are never saved automatically.
+          </p>
+          <div className="lv-buttons">
+            <button
+              className="lv-btn"
+              disabled={
+                !status.live ||
+                !(status.captureUntil > Date.now()) ||
+                mode !== "live"
+              }
+              onClick={() => {
+                record.current = { frames: [], active: true };
+                setRecorded(0);
+                setRecording(true);
+                setNotice("Recording up to 30 frames, with host permission.");
+              }}
+            >
+              Record clip
+            </button>
+            <button
+              className="lv-btn"
+              disabled={!recorded}
+              onClick={() => {
+                setRecording(false);
+                saveClip();
+              }}
+            >
+              Download {recorded || ""} frames
+            </button>
+            <button
+              className="lv-btn"
+              onClick={() => fileInput.current.click()}
+            >
+              Open replay
+            </button>
+            {mode === "replay" && (
+              <button
+                className="lv-btn primary"
+                onClick={() => {
+                  clearInterval(replay.current);
+                  clearFrame();
+                  setMode("live");
+                }}
+              >
+                Back to live
+              </button>
+            )}
+          </div>
+
+          <div className="lv-sheet-foot">
+            {nativeApp() && (
+              <button
+                className="lv-btn"
+                onClick={() => nativeApp().postMessage({ action: "server" })}
+              >
+                <Icon d={ICONS.server} size={18} /> Server
+              </button>
+            )}
+            {onOpenWorkspace && (
+              <button className="lv-btn" onClick={onOpenWorkspace}>
+                <Icon d={ICONS.grid} size={18} /> Shared board
+              </button>
+            )}
+            {onLeave && (
+              <button className="lv-btn danger" onClick={onLeave}>
+                <Icon d={ICONS.exit} size={18} /> Leave
+              </button>
+            )}
+          </div>
+        </aside>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json"
+          hidden
+          onChange={loadReplay}
+        />
+      </section>
+    );
   }
   return (
     <section
